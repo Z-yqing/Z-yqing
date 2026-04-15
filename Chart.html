@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>图表生成工具</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <!-- 新增: 引入 SheetJS 用于解析 Excel/CSV -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #409EFF;
+            --bg-color: #f5f7fa;
+            --card-bg: #ffffff;
+            --danger-color: #F56C6C;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            margin: 0;
+            padding: 10px; /* 减小内边距以适应小屏 */
+            display: flex;
+            justify-content: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            width: 100%;
+            max-width: 1200px;
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            flex-direction: row; /* 默认横向 */
+        }
+
+        .controls {
+            flex: 1;
+            min-width: 300px;
+            padding: 20px;
+            border-right: 1px solid #eee;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+
+        h2 {
+            margin-top: 0;
+            color: #333;
+            font-size: 1.5rem;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        label {
+            font-weight: 600;
+            color: #555;
+            font-size: 0.9rem;
+        }
+
+        /* 优化输入框触控体验 */
+        input[type="text"],
+        input[type="number"],
+        textarea,
+        select {
+            padding: 10px; /* 增大内边距 */
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px; /* 防止 iOS 缩放 */
+            min-height: 44px; /* 最小触控高度 */
+            box-sizing: border-box;
+        }
+
+        .data-rows-container {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            padding: 10px;
+            border-radius: 6px;
+        }
+
+        .data-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap; /* 允许换行 */
+        }
+
+        .data-row input {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            flex: 1;
+            min-width: 60px;
+        }
+
+        .btn-remove {
+            background-color: #fef0f0;
+            color: var(--danger-color);
+            border: 1px solid #fde2e2;
+            padding: 8px 12px; /* 增大按钮点击区 */
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+            min-height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-remove:hover {
+            background-color: var(--danger-color);
+            color: white;
+            border-color: var(--danger-color);
+        }
+
+        .btn-add {
+            background-color: #ecf5ff;
+            color: var(--primary-color);
+            border: 1px dashed var(--primary-color);
+            padding: 12px; /* 增大点击区 */
+            border-radius: 6px;
+            cursor: pointer;
+            text-align: center;
+            font-size: 14px;
+            transition: all 0.3s;
+            min-height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-add:hover {
+            background-color: var(--primary-color);
+            color: white;
+            border-style: solid;
+        }
+
+        .radio-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .radio-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            cursor: pointer;
+            padding: 10px; /* 增大点击区域 */
+            border-radius: 6px;
+            transition: background 0.2s;
+            min-height: 44px;
+        }
+
+        .radio-item:hover {
+            background-color: #f5f7fa;
+        }
+
+        .radio-item input[type="radio"],
+        .radio-item input[type="checkbox"] {
+            margin: 0;
+            width: 20px;
+            height: 20px;
+        }
+
+        .stack-config-container {
+            border: 1px solid #eee;
+            padding: 10px;
+            border-radius: 6px;
+            background-color: #fafafa;
+            margin-top: 5px;
+        }
+        
+        .stack-series-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .stack-tag {
+            display: flex;
+            align-items: center;
+            background: #fff;
+            border: 1px solid #ddd;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .stack-tag input {
+            border: none;
+            outline: none;
+            width: 80px;
+            font-size: 12px;
+            padding: 4px;
+        }
+
+        .stack-tag .btn-remove-mini {
+            margin-left: 5px;
+            color: #F56C6C;
+            cursor: pointer;
+            font-weight: bold;
+            padding: 4px;
+        }
+
+        .btn-add-mini {
+            font-size: 12px;
+            padding: 8px 12px;
+            background: #ecf5ff;
+            color: var(--primary-color);
+            border: 1px dashed var(--primary-color);
+            border-radius: 4px;
+            cursor: pointer;
+            min-height: 36px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 200px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-family: monospace;
+            resize: vertical;
+            box-sizing: border-box;
+            font-size: 14px;
+        }
+
+        textarea:focus, input:focus {
+            outline: none;
+            border-color: var(--primary-color);
+        }
+
+        .btn-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: 10px;
+            width: 100%;
+            flex-wrap: wrap; /* 允许换行 */
+        }
+
+        button {
+            padding: 12px 16px; /* 增大按钮点击区 */
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.3s;
+            flex: 1;
+            min-height: 44px;
+            font-size: 16px;
+        }
+
+        .btn-primary {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: #66b1ff;
+        }
+
+        .btn-success {
+            background-color: #67C23A;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background-color: #85ce61;
+        }
+
+        /* 新增: 文件导入相关样式 */
+        .file-import-area {
+            border: 2px dashed #ddd;
+            padding: 20px; /* 增大内边距 */
+            border-radius: 6px;
+            text-align: center;
+            background-color: #fafafa;
+            transition: border-color 0.3s;
+        }
+
+        .file-import-area:hover {
+            border-color: var(--primary-color);
+        }
+
+        .file-import-area input[type="file"] {
+            display: none;
+        }
+
+        .file-import-label {
+            cursor: pointer;
+            color: var(--primary-color);
+            font-weight: 500;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+            min-height: 44px;
+            justify-content: center;
+        }
+        
+        .file-import-hint {
+            font-size: 12px;
+            color: #999;
+            margin-top: 5px;
+        }
+
+        .hint {
+            font-size: 0.85rem;
+            color: #888;
+            background: #f9f9f9;
+            padding: 8px;
+            border-radius: 4px;
+            line-height: 1.4;
+        }
+
+        .chart-container {
+            flex: 2;
+            min-width: 300px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #mainChart {
+            width: 100%;
+            height: 500px;
+            background-color: #fff;
+        }
+
+        /* 移动端适配媒体查询 */
+        @media (max-width: 768px) {
+            body {
+                padding: 0;
+            }
+
+            .container {
+                flex-direction: column;
+                border-radius: 0;
+                box-shadow: none;
+                height: 100%;
+            }
+
+            .controls {
+                border-right: none;
+                border-bottom: 1px solid #eee;
+                max-height: none;
+                padding: 15px;
+                width: 100%;
+                box-sizing: border-box;
+            }
+
+            .chart-container {
+                width: 100%;
+                padding: 15px;
+                box-sizing: border-box;
+            }
+
+            #mainChart {
+                height: 350px; /* 移动端适当降低图表高度 */
+            }
+
+            .data-row {
+                flex-direction: column;
+                align-items: stretch;
+                border-bottom: 1px solid #f0f0f0;
+                padding-bottom: 10px;
+                margin-bottom: 10px;
+            }
+
+            .data-row input {
+                width: 100%;
+                margin-bottom: 5px;
+            }
+
+            .btn-remove {
+                width: 100%;
+                margin-top: 5px;
+            }
+
+            .btn-row {
+                flex-direction: column;
+            }
+
+            .btn-row input {
+                width: 100%;
+                margin-bottom: 10px;
+            }
+
+            .btn-row button {
+                width: 100%;
+            }
+            
+            h2 {
+                font-size: 1.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="controls">
+        <h2>📊 图表生成器</h2>
+        
+        <div class="input-group">
+            <label>数据输入</label>
+            <div id="dataRowsContainer" class="data-rows-container"></div>
+            <button class="btn-add" onclick="addDataRow()">+ 添加数据项</button>
+        </div>
+
+        <!-- 新增: 文件导入区域 -->
+        <div class="input-group">
+            <label>从文件导入 (Excel/CSV)</label>
+            <div class="file-import-area">
+                <label for="fileInput" class="file-import-label">
+                    <span>📂 点击选择文件或拖拽至此</span>
+                    <span class="file-import-hint">支持 .xlsx, .xls, .csv 格式</span>
+                </label>
+                <input type="file" id="fileInput" accept=".xlsx, .xls, .csv" onchange="handleFileImport(this)">
+            </div>
+        </div>
+
+        <div class="input-group" id="stackConfigArea" style="display: none;">
+            <label>堆叠系列配置 (至少2个系列)</label>
+            <div class="stack-config-container">
+                <div id="stackSeriesList" class="stack-series-list"></div>
+                <button class="btn-add-mini" onclick="addStackSeries()">+ 添加系列</button>
+            </div>
+        </div>
+
+        <div class="input-group">
+            <label for="chartTitleInput">图表标题</label>
+            <input type="text" id="chartTitleInput" placeholder="例如：2023年销售统计" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+        </div>
+
+        <div class="input-group">
+            <label for="unitInput">单位</label>
+            <input type="text" id="unitInput" placeholder="例如：万元、个、%" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+        </div>
+
+        <div class="input-group">
+            <label for="dataSourceInput">数据来源</label>
+            <input type="text" id="dataSourceInput" placeholder="例如：2023年度财务报表" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+        </div>
+
+        <div class="input-group">
+            <label>选择图表类型</label>
+            <div class="radio-group">
+                <label class="radio-item">
+                    <input type="radio" name="chartType" value="bar" checked onchange="changeType('bar')">
+                    <span>柱状图</span>
+                </label>
+                <label class="radio-item">
+                    <input type="radio" name="chartType" value="stackBar" onchange="changeType('stackBar')">
+                    <span>堆叠柱状图</span>
+                </label>
+                <label class="radio-item">
+                    <input type="radio" name="chartType" value="line" onchange="changeType('line')">
+                    <span>折线图</span>
+                </label>
+                <label class="radio-item">
+                    <input type="radio" name="chartType" value="pie" onchange="changeType('pie')">
+                    <span>饼状图</span>
+                </label>
+                <label class="radio-item">
+                    <input type="radio" name="chartType" value="diffBar" onchange="changeType('diffBar')">
+                    <span>差值柱状图</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="input-group" id="diffOptions" style="display: none;">
+            <label class="radio-item" style="padding-left: 0;">
+                <input type="checkbox" id="showRatioCheck" onchange="renderChart()">
+                <span>显示比例 (%)</span>
+            </label>
+        </div>
+
+        <div class="btn-group">
+            <button class="btn-primary" onclick="renderChart()">🔄 生成/刷新图表</button>
+            
+            <div class="btn-row">
+                <!-- 新增: 文件名输入框 -->
+                <input type="text" id="exportFileNameInput" placeholder="导出文件名 (可选)" style="padding: 8px; border: 1px solid #ddd; border-radius: 4px; flex: 2;">
+                <button class="btn-success" onclick="downloadChart()" style="flex: 1;">💾 导出图片</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="chart-container">
+        <div id="mainChart"></div>
+    </div>
+</div>
+
+<script>
+    let myChart = echarts.init(document.getElementById('mainChart'));
+    let currentType = 'bar';
+    let stackSeriesNames = ['系列1', '系列2'];
+
+    window.addEventListener('resize', () => myChart.resize());
+
+    function initDefaultData() {
+        const defaultData = [
+            { name: '苹果', values: [60, 40] },
+            { name: '香蕉', values: [120, 80] },
+            { name: '橘子', values: [90, 60] },
+            { name: '葡萄', values: [50, 30] },
+            { name: '西瓜', values: [180, 120] }
+        ];
+        const container = document.getElementById('dataRowsContainer');
+        container.innerHTML = '';
+        defaultData.forEach(item => addDataRow(item.name, item.values));
+        renderStackSeriesUI();
+    }
+
+    function renderStackSeriesUI() {
+        const list = document.getElementById('stackSeriesList');
+        list.innerHTML = '';
+        stackSeriesNames.forEach((name, index) => {
+            const tag = document.createElement('div');
+            tag.className = 'stack-tag';
+            tag.innerHTML = `
+                <input type="text" value="${name}" onchange="updateStackSeriesName(${index}, this.value)" title="修改系列名称">
+                <span class="btn-remove-mini" onclick="removeStackSeries(${index})" title="删除系列">×</span>
+            `;
+            list.appendChild(tag);
+        });
+    }
+
+    function addStackSeries() {
+        stackSeriesNames.push(`系列${stackSeriesNames.length + 1}`);
+        renderStackSeriesUI();
+        renderDataRows();
+    }
+
+    function updateStackSeriesName(index, newName) {
+        stackSeriesNames[index] = newName;
+    }
+
+    function removeStackSeries(index) {
+        if (stackSeriesNames.length <= 2) {
+            alert('堆叠图至少需要保留两个系列');
+            return;
+        }
+        stackSeriesNames.splice(index, 1);
+        renderStackSeriesUI();
+        renderDataRows();
+        if (currentType === 'stackBar') renderChart();
+    }
+
+    function addDataRow(name = '', values = []) {
+        const container = document.getElementById('dataRowsContainer');
+        const div = document.createElement('div');
+        div.className = 'data-row';
+        
+        let html = `<input type="text" class="name-input" placeholder="名称" value="${name}">`;
+        
+        const isStack = currentType === 'stackBar';
+        const seriesCount = isStack ? stackSeriesNames.length : 1;
+        
+        if (!Array.isArray(values)) values = [values];
+        while(values.length < seriesCount) values.push(0);
+        if(values.length > seriesCount) values = values.slice(0, seriesCount);
+
+        if (isStack) {
+            values.forEach((val, idx) => {
+                html += `<input type="number" class="value-input stack-val-${idx}" placeholder="${stackSeriesNames[idx]}" value="${val}" style="flex:1; min-width:50px;">`;
+            });
+        } else {
+            html += `<input type="number" class="value-input" placeholder="单位" value="${values[0] || ''}">`;
+        }
+
+        html += `<button class="btn-remove" onclick="removeDataRow(this)" title="删除此项">删除</button>`;
+        div.innerHTML = html;
+        container.appendChild(div);
+    }
+
+    function renderDataRows() {
+        const rows = document.querySelectorAll('.data-row');
+        const newData = [];
+        rows.forEach(row => {
+            const name = row.querySelector('.name-input').value;
+            const inputs = row.querySelectorAll('.value-input');
+            const vals = Array.from(inputs).map(input => parseFloat(input.value) || 0);
+            newData.push({ name, values: vals });
+        });
+
+        const container = document.getElementById('dataRowsContainer');
+        container.innerHTML = '';
+        
+        // 使用 DocumentFragment 优化性能
+        const fragment = document.createDocumentFragment();
+        newData.forEach(item => {
+            const div = document.createElement('div');
+            div.className = 'data-row';
+            
+            let html = `<input type="text" class="name-input" placeholder="名称" value="${item.name}">`;
+            const isStack = currentType === 'stackBar';
+            const seriesCount = isStack ? stackSeriesNames.length : 1;
+            let vals = item.values || [];
+            
+            if (!Array.isArray(vals)) vals = [vals];
+            while(vals.length < seriesCount) vals.push(0);
+            if(vals.length > seriesCount) vals = vals.slice(0, seriesCount);
+
+            if (isStack) {
+                vals.forEach((val, idx) => {
+                    html += `<input type="number" class="value-input stack-val-${idx}" placeholder="${stackSeriesNames[idx]}" value="${val}" style="flex:1; min-width:50px;">`;
+                });
+            } else {
+                html += `<input type="number" class="value-input" placeholder="数值" value="${vals[0] || ''}">`;
+            }
+            html += `<button class="btn-remove" onclick="removeDataRow(this)" title="删除此项">删除</button>`;
+            div.innerHTML = html;
+            fragment.appendChild(div);
+        });
+        container.appendChild(fragment);
+    }
+
+    function removeDataRow(btn) {
+        btn.parentElement.remove();
+    }
+
+    // 新增: 处理文件导入
+    function handleFileImport(input) {
+        const file = input.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            
+            // 获取第一个工作表
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            
+            // 转换为 JSON (数组的数组)
+            const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+            
+            if (jsonData.length < 2) {
+                alert('文件中没有足够的数据行');
+                return;
+            }
+
+            // 假设第一行是标题（可选跳过），第二行开始是数据
+            // 这里简单处理：尝试识别哪一列是名称，哪几列是数值
+            // 策略：寻找包含非数字内容的列作为名称列，其余作为数值列
+            
+            let nameColIndex = -1;
+            const sampleRow = jsonData[1] || jsonData[0];
+            
+            // 简单启发式：找到第一个包含非纯数字内容的列作为名称列
+            for (let i = 0; i < sampleRow.length; i++) {
+                const val = sampleRow[i];
+                if (val && isNaN(parseFloat(val))) {
+                    nameColIndex = i;
+                    break;
+                }
+            }
+
+            // 如果没找到文本列，默认第一列是名称
+            if (nameColIndex === -1) nameColIndex = 0;
+
+            const newData = [];
+            // 从第1行或第2行开始遍历，取决于第一行是否是标题
+            // 这里假设如果第一行包含非数字，可能是标题，跳过
+            let startIndex = 0;
+            const firstRow = jsonData[0];
+            const isHeader = firstRow.some(cell => cell && isNaN(parseFloat(cell)));
+            if (isHeader) startIndex = 1;
+
+            for (let i = startIndex; i < jsonData.length; i++) {
+                const row = jsonData[i];
+                if (!row || row.length === 0) continue;
+                
+                const name = row[nameColIndex];
+                if (!name) continue;
+
+                const values = [];
+                for (let j = 0; j < row.length; j++) {
+                    if (j === nameColIndex) continue;
+                    const num = parseFloat(row[j]);
+                    if (!isNaN(num)) {
+                        values.push(num);
+                    }
+                }
+                
+                if (values.length > 0) {
+                    newData.push({ name: String(name), values: values });
+                }
+            }
+
+            if (newData.length > 0) {
+                // 清空现有数据
+                document.getElementById('dataRowsContainer').innerHTML = '';
+                
+                // 如果是堆叠图，根据导入数据的列数调整系列数量
+                const maxVals = Math.max(...newData.map(d => d.values.length));
+                if (currentType === 'stackBar') {
+                    stackSeriesNames = [];
+                    for(let k=0; k<maxVals; k++) {
+                        stackSeriesNames.push(`系列${k+1}`);
+                    }
+                    renderStackSeriesUI();
+                }
+
+                // 添加新数据行
+                newData.forEach(item => addDataRow(item.name, item.values));
+                
+                // 重新渲染图表
+                renderChart();
+                alert(`成功导入 ${newData.length} 条数据`);
+            } else {
+                alert('未能从文件中解析出有效数据');
+            }
+            
+            // 清空 input 以便允许重复上传同一文件
+            input.value = '';
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    function getDataFromDOM() {
+        const rows = document.querySelectorAll('.data-row');
+        const categories = [];
+        const values = [];
+
+        rows.forEach(row => {
+            const name = row.querySelector('.name-input').value.trim();
+            if (!name) return;
+
+            const isStack = currentType === 'stackBar';
+            const seriesCount = isStack ? stackSeriesNames.length : 1;
+            const rowValues = [];
+
+            if (isStack) {
+                for (let i = 0; i < seriesCount; i++) {
+                    const input = row.querySelector(`.stack-val-${i}`);
+                    rowValues.push(parseFloat(input ? input.value : 0) || 0);
+                }
+            } else {
+                const input = row.querySelector('.value-input');
+                rowValues.push(parseFloat(input ? input.value : 0) || 0);
+            }
+
+            categories.push(name);
+            values.push(rowValues);
+        });
+
+        return { categories, values };
+    }
+
+    function changeType(type) {
+        currentType = type;
+        const diffOptions = document.getElementById('diffOptions');
+        const stackConfigArea = document.getElementById('stackConfigArea');
+        
+        diffOptions.style.display = type === 'diffBar' ? 'flex' : 'none';
+        stackConfigArea.style.display = type === 'stackBar' ? 'block' : 'none';
+
+        renderDataRows();
+        renderChart();
+    }
+
+    function getChartTitle() {
+        const customTitle = document.getElementById('chartTitleInput').value.trim();
+        if (customTitle) {
+            return customTitle;
+        }
+        const titles = {
+            'bar': '数据柱状图',
+            'stackBar': '数据堆叠柱状图',
+            'line': '数据折线图',
+            'pie': '数据分布饼图',
+            'diffBar': '数据差值分析图'
+        };
+        return titles[currentType] || '图表';
+    }
+
+    function renderChart() {
+        const data = getDataFromDOM();
+        const dataSource = document.getElementById('dataSourceInput').value.trim();
+        const unit = document.getElementById('unitInput').value.trim();
+        const showRatio = document.getElementById('showRatioCheck').checked;
+        
+        if (data.categories.length === 0) {
+            myChart.clear();
+            return;
+        }
+
+        const commonGrid = {
+            left: '3%',
+            right: '4%',
+            bottom: dataSource ? '10%' : '3%',
+            containLabel: true
+        };
+
+        const baseOption = {
+            title: { text: getChartTitle(), left: 'center' },
+            grid: commonGrid,
+            graphic: dataSource ? [{
+                type: 'text',
+                left: 'center',
+                bottom: 10,
+                style: {
+                    text: `数据来源：${dataSource}`,
+                    fill: '#999',
+                    font: '12px sans-serif'
+                }
+            }] : []
+        };
+
+        let option = {};
+
+        if (currentType === 'pie') {
+            const pieData = data.categories.map((name, index) => ({
+                name: name,
+                value: data.values[index][0] || 0
+            }));
+
+            option = {
+                ...baseOption,
+                tooltip: { trigger: 'item', formatter: '{b}: {c}' + (unit || '') + ' ({d}%)' },
+                legend: { orient: 'vertical', left: 'left', top: 'middle' },
+                series: [{
+                    name: '数据源',
+                    type: 'pie',
+                    radius: ['40%', '70%'],
+                    avoidLabelOverlap: false,
+                    itemStyle: { borderRadius: 10, borderColor: '#fff', borderWidth: 2 },
+                    label: { show: true, formatter: '{b}: {c}' + (unit || '') + ' ({d}%)' },
+                    emphasis: { label: { show: true, fontSize: 16, fontWeight: 'bold' } },
+                    data: pieData
+                }]
+            };
+        } else if (currentType === 'stackBar') {
+            const series = stackSeriesNames.map((name, index) => ({
+                name: name,
+                type: 'bar',
+                stack: 'total',
+                data: data.values.map(rowVals => rowVals[index] || 0),
+                label: { show: true, position: 'inside' }
+            }));
+
+            option = {
+                ...baseOption,
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: { type: 'shadow' },
+                    formatter: function(params) {
+                        let res = params[0].name + '<br/>';
+                        let total = 0;
+                        params.forEach(item => {
+                            res += item.marker + item.seriesName + ': ' + item.value + (unit || '') + '<br/>';
+                            total += item.value;
+                        });
+                        res += '总计: ' + total.toFixed(2) + (unit || '');
+                        return res;
+                    }
+                },
+                legend: { data: stackSeriesNames, top: 30 },
+                xAxis: { type: 'category', data: data.categories, axisTick: { alignWithLabel: true } },
+                yAxis: { type: 'value', name: unit ? `单位 (${unit})` : '' },
+                series: series
+            };
+        } else if (currentType === 'diffBar') {
+            // 获取原始数值
+            const originalValues = data.values.map(rowVals => rowVals[0] || 0);
+            
+            // 计算差值
+            const diffValues = originalValues.map((val, index) => {
+                if (index === 0) return 0;
+                return val - originalValues[index - 1];
+            });
+
+            option = {
+                ...baseOption,
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: { type: 'shadow' },
+                    formatter: function (params) {
+                        const dataIndex = params[0].dataIndex;
+                        const originalVal = originalValues[dataIndex];
+                        const diffVal = diffValues[dataIndex];
+                        let res = `${params[0].name}<br/>原始数值: ${originalVal}${unit || ''}`;
+                        
+                        if (dataIndex > 0) {
+                            res += `<br/>差值: ${diffVal >= 0 ? '+' : ''}${diffVal}${unit || ''}`;
+                            if (showRatio) {
+                                const prevVal = originalValues[dataIndex - 1];
+                                const ratio = prevVal !== 0 ? ((diffVal / prevVal) * 100).toFixed(2) : 0;
+                                res += `<br/>环比变化: ${ratio}%`;
+                            }
+                        }
+                        return res;
+                    }
+                },
+                xAxis: { type: 'category', data: data.categories, axisTick: { alignWithLabel: true } },
+                // Y轴显示原始数值
+                yAxis: { type: 'value', name: unit ? `单位 (${unit})` : '数值' },
+                series: [
+                    {
+                        name: '原始数值',
+                        type: 'bar',
+                        data: originalValues,
+                        itemStyle: {
+                            color: '#409EFF'
+                        },
+                        label: {
+                            show: true,
+                            position: 'top',
+                            formatter: function(params) {
+                                const dataIndex = params.dataIndex;
+                                const diffVal = diffValues[dataIndex];
+                                const originalVal = params.value;
+                                
+                                // 第一根柱子没有差值
+                                if (dataIndex === 0) {
+                                    return `{orig|${originalVal}${unit || ''}}`;
+                                }
+
+                                let diffText = `${diffVal >= 0 ? '↑' : '↓'}${Math.abs(diffVal)}${unit || ''}`;
+                                if (showRatio) {
+                                    const prevVal = originalValues[dataIndex - 1];
+                                    const ratio = prevVal !== 0 ? ((diffVal / prevVal) * 100).toFixed(1) : 0;
+                                    diffText += ` (${ratio}%)`;
+                                }
+                                
+                                // 根据差值正负选择对应的 rich 样式标记
+                                const diffStyleTag = diffVal >= 0 ? 'diffGreen' : 'diffRed';
+                                
+                                // 返回两行：第一行原值，第二行差值
+                                return `{orig|${originalVal}${unit || ''}}\n{${diffStyleTag}|${diffText}}`;
+                            },
+                            rich: {
+                                orig: {
+                                    fontSize: 12,
+                                    fontWeight: 'bold',
+                                    color: '#333'
+                                },
+                                diffGreen: {
+                                    fontSize: 11,
+                                    color: '#67C23A' // 绿色
+                                },
+                                diffRed: {
+                                    fontSize: 11,
+                                    color: '#F56C6C' // 红色
+                                }
+                            }
+                        }
+                    }
+                ]
+            };
+        } else {
+            // Bar and Line
+            const flatValues = data.values.map(v => v[0]);
+            const isLine = currentType === 'line';
+
+            option = {
+                ...baseOption,
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: { type: isLine ? 'line' : 'shadow' },
+                    formatter: function(params) {
+                        let res = params[0].name + '<br/>';
+                        params.forEach(item => {
+                            res += item.marker + item.seriesName + ': ' + item.value + (unit || '') + '<br/>';
+                        });
+                        return res;
+                    }
+                },
+                xAxis: { type: 'category', data: data.categories, axisTick: { alignWithLabel: true } },
+                yAxis: { type: 'value', name: unit ? `单位 (${unit})` : '' },
+                series: [{
+                    name: '单位',
+                    type: currentType,
+                    data: flatValues,
+                    smooth: isLine,
+                    itemStyle: { color: '#409EFF' },
+                    areaStyle: isLine ? { opacity: 0.3 } : null,
+                    label: {
+                        show: true,
+                        position: 'top',
+                        formatter: '{c}' + (unit || '')
+                    }
+                }]
+            };
+        }
+
+        myChart.setOption(option, true); 
+    }
+
+    function downloadChart() {
+        const url = myChart.getDataURL({
+            type: 'png',
+            pixelRatio: 2,
+            backgroundColor: '#fff'
+        });
+        const a = document.createElement('a');
+        a.href = url;
+        
+        // 修改: 获取自定义文件名，若无则使用默认值
+        let fileName = document.getElementById('exportFileNameInput').value.trim();
+        if (!fileName) {
+            fileName = 'chart-export';
+        }
+        // 确保后缀名为 .png
+        if (!fileName.toLowerCase().endsWith('.png')) {
+            fileName += '.png';
+        }
+        
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
+
+    window.onload = function() {
+        initDefaultData();
+        renderChart();
+    };
+</script>
+
+</body>
+</html>
